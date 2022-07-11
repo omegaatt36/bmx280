@@ -1,0 +1,1 @@
+[source](https://github.com/d2r2/go-bsbmp/blob/master/examples/example1.go)
