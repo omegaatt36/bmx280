@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 	"time"
@@ -10,6 +11,10 @@ import (
 	"github.com/d2r2/go-logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+var (
+	addr = flag.String("listen-address", ":9110", "The address to listen on for HTTP requests.")
 )
 
 type bmp280Collector struct {
@@ -78,6 +83,7 @@ func (collector *bmp280Collector) Collect(ch chan<- prometheus.Metric) {
 }
 
 func main() {
+	flag.Parse()
 
 	// Create new connection to i2c-bus on 1 line with address 0x76.
 	// Use i2cdetect utility to find device address over the i2c-bus
@@ -99,8 +105,9 @@ func main() {
 	collector := newBmp280Collector(sensor)
 	prometheus.MustRegister(collector)
 
+	log.Printf("handle %s/metrics \n", *addr)
 	http.Handle("/metrics", promhttp.Handler())
-	log.Fatal(http.ListenAndServe(":9110", nil))
+	log.Fatal(http.ListenAndServe(*addr, nil))
 
 	log.Println("exit")
 }
