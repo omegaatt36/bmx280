@@ -17,42 +17,52 @@ var (
 	addr = flag.String("listen-address", ":9110", "The address to listen on for HTTP requests.")
 )
 
-type bmp280Collector struct {
+type bme280Collector struct {
 	temperatureMetric *prometheus.Desc
+	humidityMetric    *prometheus.Desc
 	pressureMetric    *prometheus.Desc
 	altitudeMetric    *prometheus.Desc
 
 	sensor *bsbmp.BMP
 }
 
-func newBmp280Collector(bmp280 *bsbmp.BMP) *bmp280Collector {
-	return &bmp280Collector{
+func newBme280Collector(bme280 *bsbmp.BMP) *bme280Collector {
+	return &bme280Collector{
 		temperatureMetric: prometheus.NewDesc(
-			"bmp280_temperature", "bmp 280 temperature(Celsius)",
+			"bme280_temperature", "bme 280 temperature(Celsius)",
+			nil, nil),
+		humidityMetric: prometheus.NewDesc(
+			"bme280_humidity", "bme 280 humidity(RH)",
 			nil, nil),
 		pressureMetric: prometheus.NewDesc(
-			"bmp280_pressure", "bmp 280 pressure(hPa)",
+			"bme280_pressure", "bme 280 pressure(hPa)",
 			nil, nil),
 		altitudeMetric: prometheus.NewDesc(
-			"bmp280_altitude", "bmp 280 altitude(m)",
+			"bme280_altitude", "bme 280 altitude(m)",
 			nil, nil),
 
-		sensor: bmp280,
+		sensor: bme280,
 	}
 }
 
 //Each and every collector must implement the Describe function.
 //It essentially writes all descriptors to the prometheus desc channel.
-func (collector *bmp280Collector) Describe(ch chan<- *prometheus.Desc) {
+func (collector *bme280Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.temperatureMetric
 	ch <- collector.pressureMetric
 	ch <- collector.altitudeMetric
 }
 
 //Collect implements required collect function for all promehteus collectors
-func (collector *bmp280Collector) Collect(ch chan<- prometheus.Metric) {
+func (collector *bme280Collector) Collect(ch chan<- prometheus.Metric) {
 	// Read temperature in celsius degree
 	temperature, err := collector.sensor.ReadTemperatureC(bsbmp.ACCURACY_STANDARD)
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+	// Read humidity in RH
+	_, humidity, err := collector.sensor.ReadHumidityRH(bsbmp.ACCURACY_STANDARD)
 	if err != nil {
 		log.Fatalln(err)
 		return
@@ -73,11 +83,14 @@ func (collector *bmp280Collector) Collect(ch chan<- prometheus.Metric) {
 
 	mTemperature := prometheus.MustNewConstMetric(collector.temperatureMetric,
 		prometheus.GaugeValue, float64(temperature))
+	mHumidity := prometheus.MustNewConstMetric(collector.humidityMetric,
+		prometheus.GaugeValue, float64(humidity))
 	mPressure := prometheus.MustNewConstMetric(collector.pressureMetric,
 		prometheus.GaugeValue, float64(pressure))
 	mAltitude := prometheus.MustNewConstMetric(collector.altitudeMetric,
 		prometheus.GaugeValue, float64(altitude))
 	ch <- prometheus.NewMetricWithTimestamp(time.Now(), mTemperature)
+	ch <- prometheus.NewMetricWithTimestamp(time.Now(), mHumidity)
 	ch <- prometheus.NewMetricWithTimestamp(time.Now(), mPressure)
 	ch <- prometheus.NewMetricWithTimestamp(time.Now(), mAltitude)
 }
@@ -95,14 +108,14 @@ func main() {
 	// Uncomment next line to supress verbose output
 	logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
 
-	sensor, err := bsbmp.NewBMP(bsbmp.BMP280, i2c)
+	sensor, err := bsbmp.NewBMP(bsbmp.BME280, i2c)
 	if err != nil {
 		log.Fatal(err)
 	}
 	// Uncomment next line to supress verbose output
 	logger.ChangePackageLogLevel("bsbmp", logger.InfoLevel)
 
-	collector := newBmp280Collector(sensor)
+	collector := newBme280Collector(sensor)
 	prometheus.MustRegister(collector)
 
 	log.Printf("handle %s/metrics \n", *addr)
